@@ -1,88 +1,82 @@
-package com.cabinetmedical.patient; // Assurez-vous que le package correspond au vôtre
+package com.cabinetmedical.patient;
 
 import jade.core.ProfileImpl;
 import jade.core.Runtime;
 import jade.wrapper.AgentContainer;
 import jade.wrapper.AgentController;
 import jade.wrapper.ControllerException;
-import jade.util.ExtendedProperties;
-import jade.util.leap.Properties;
-import jade.gui.GuiEvent; // Importation nécessaire pour envoyer des événements à l'agent
+import jade.gui.GuiEvent;
 import java.util.concurrent.LinkedBlockingQueue;
 
-import javax.swing.JFrame;
 import javax.swing.SwingUtilities;
-import java.awt.*;
+import java.util.Scanner;
 
 public class PatientContainer {
 
-    private AgentContainer patientJadeContainer; // Renommé pour plus de clarté
-    private Patient_Agent patientAgent; // Référence à l'agent patient
+    private AgentContainer patientJadeContainer;
+    private Patient_Agent patientAgent;
 
     private InscriptionPatientInterface inscriptionGui;
     private ConsultationPatientInterface consultationGui;
 
-    // --- Ajoutez cette file d'attente ---
     private LinkedBlockingQueue<GuiEvent> guiEventQueue = new LinkedBlockingQueue<>();
-    // Nous utiliserons GuiEvent comme type d'éléments, mais cela pourrait être une classe personnalisée si besoin.
-    // -------------------------------------
 
     public static void main(String[] args) {
         // Créer une instance de la classe conteneur
         PatientContainer container = new PatientContainer();
-        container.startContainer();
-        // L'affichage de l'interface d'inscription se fera après le démarrage du conteneur JADE
+
+        // Demander l'adresse du Main Container
+        Scanner scanner = new Scanner(System.in);
+        System.out.println("╔═══════════════════════════════════════════════════╗");
+        System.out.println("║     SYSTÈME DE CONSULTATION MÉDICALE - PATIENT    ║");
+        System.out.println("╚═══════════════════════════════════════════════════╝");
+
+        System.out.print("Adresse IP du conteneur principal (laisser vide pour localhost): ");
+        String host = scanner.nextLine().trim();
+        if (host.isEmpty()) {
+            host = "localhost";
+        }
+
+        System.out.print("Port du conteneur principal (laisser vide pour 1099): ");
+        String portStr = scanner.nextLine().trim();
+        int port = 1099;
+        if (!portStr.isEmpty()) {
+            try {
+                port = Integer.parseInt(portStr);
+            } catch (NumberFormatException e) {
+                System.out.println("Port invalide, utilisation du port par défaut: 1099");
+            }
+        }
+
+        container.startContainer(host, port);
     }
 
     public void closeInterfaces() {
         SwingUtilities.invokeLater(() -> {
             if (inscriptionGui != null) {
-                inscriptionGui.dispose(); // Libère les ressources de la fenêtre Swing
+                inscriptionGui.dispose();
             }
             if (consultationGui != null) {
-                consultationGui.dispose(); // Libère les ressources de la fenêtre Swing
+                consultationGui.dispose();
             }
         });
     }
 
-    public void startContainer() {
+    public void startContainer(String host, int port) {
         try {
             Runtime runtime = Runtime.instance();
-            Properties properties = new ExtendedProperties();
+            ProfileImpl profile = new ProfileImpl();
 
-            // Configurer les propriétés pour le conteneur JADE
-            properties.setProperty(ProfileImpl.GUI, "true"); // Active la GUI RMA pour le débogage
-            properties.setProperty(ProfileImpl.MAIN_HOST, "localhost"); // Adresse du Main Container (ajustez si nécessaire)
-            properties.setProperty(ProfileImpl.MAIN_PORT, "1099"); // Port du Main Container (ajustez si nécessaire)
-            properties.setProperty(ProfileImpl.CONTAINER_NAME, "PatientContainer"); // Nom de ce conteneur
+            // Configurer les propriétés pour se connecter au Main Container existant
+            profile.setParameter(ProfileImpl.MAIN_HOST, host);
+            profile.setParameter(ProfileImpl.MAIN_PORT, String.valueOf(port));
+            profile.setParameter(ProfileImpl.CONTAINER_NAME, "PatientContainer");
 
-
-            ProfileImpl profile = new ProfileImpl(properties);
-
-            // Créer le conteneur d'agents
+            // Créer le conteneur d'agents (non-principal)
             patientJadeContainer = runtime.createAgentContainer(profile);
-
-            // Démarrer le conteneur
             patientJadeContainer.start();
 
-            System.out.println("Conteneur Patient JADE démarré.");
-
-
-            // ... création et démarrage des agents simulateurs pour les tests ...
-            try {
-                AgentController receptionistSim = patientJadeContainer.createNewAgent("Receptionniste_Agent", "com.cabinetmedical.simulators.ReceptionnisteAgentSimulator", null);
-                receptionistSim.start();
-                System.out.println("Agent Réceptionniste Simulateur démarré.");
-
-                AgentController medecinSim = patientJadeContainer.createNewAgent("Medecin_Agent", "com.cabinetmedical.simulators.MedecinAgentSimulator", null);
-                medecinSim.start();
-                System.out.println("Agent Médecin Simulateur démarré.");
-
-            } catch (ControllerException e) {
-                System.err.println("Erreur lors du démarrage des agents simulateurs.");
-                e.printStackTrace();
-            }
-            // --- Fin de la section de simulation ---
+            System.out.println("Conteneur Patient JADE démarré. Connecté au Main Container à " + host + ":" + port);
 
             SwingUtilities.invokeLater(() -> {
                 inscriptionGui = new InscriptionPatientInterface(this);
@@ -90,17 +84,15 @@ public class PatientContainer {
                 showRegistrationInterface();
             });
 
-
             // Créer et lancer l'agent Patient_Agent
             AgentController agentController = patientJadeContainer.createNewAgent(
                     "Patient_Agent",
                     "com.cabinetmedical.patient.Patient_Agent",
-                    new Object[] { this } // Toujours passer la référence du conteneur à l'agent
+                    new Object[] { this }
             );
 
             agentController.start();
             System.out.println("Agent Patient_Agent créé et démarré.");
-
 
         } catch (ControllerException e) {
             e.printStackTrace();
@@ -111,39 +103,34 @@ public class PatientContainer {
         }
     }
 
-    // Cette méthode est appelée par l'agent une fois qu'il est initialisé
-    // pour obtenir une référence à lui-même si le conteneur en a besoin.
+    // Autres méthodes inchangées...
     public void setPatientAgent(Patient_Agent agent) {
         this.patientAgent = agent;
         System.out.println("Référence de l'agent patient reçue par le conteneur.");
-        // À ce stade, l'agent est lié au conteneur graphique
     }
 
-    // Méthode pour afficher l'interface d'inscription
     public void showRegistrationInterface() {
         SwingUtilities.invokeLater(() -> {
             if (inscriptionGui != null) {
                 inscriptionGui.setVisible(true);
                 if (consultationGui != null) {
-                    consultationGui.setVisible(false); // Cacher l'interface de consultation si elle est affichée
+                    consultationGui.setVisible(false);
                 }
             }
         });
     }
 
-    // Méthode pour afficher l'interface de consultation
     public void showConsultationInterface() {
         SwingUtilities.invokeLater(() -> {
             if (consultationGui != null) {
                 consultationGui.setVisible(true);
                 if (inscriptionGui != null) {
-                    inscriptionGui.setVisible(false); // Cacher l'interface d'inscription
+                    inscriptionGui.setVisible(false);
                 }
             }
         });
     }
 
-    // Méthode appelée par l'interface graphique pour envoyer un événement à l'agent
     public void postGuiEventToAgent(GuiEvent ge) {
         guiEventQueue.offer(ge);
         System.out.println("Événement GUI mis dans la file d'attente.");
@@ -153,14 +140,12 @@ public class PatientContainer {
         return consultationGui;
     }
 
-    // Méthode appelée par l'agent pour ajouter un message à la zone de chat
     public void appendMessageToChat(String message) {
         if (consultationGui != null) {
             consultationGui.appendMessage(message);
         }
     }
 
-    // Méthode appelée par l'agent pour afficher le diagnostic final
     public void displayDiagnostic(String diagnostic) {
         if (consultationGui != null) {
             consultationGui.displayDiagnostic(diagnostic);
